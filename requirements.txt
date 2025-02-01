@@ -1,0 +1,2 @@
+ultralytics==8.3.70
+easyocr==1.7.2
