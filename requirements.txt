@@ -1,2 +1,4 @@
 ultralytics==8.3.70
 easyocr==1.7.2
+filterpy==1.4.5
+googletrans==4.0.0-rc1
