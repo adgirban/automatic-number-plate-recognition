@@ -1,6 +1,7 @@
 from ultralytics import YOLO
 import cv2
 from sort.sort import *
+from IPython.display import Image
 from util import get_car, read_license_plate, write_csv
 
 results = {}
@@ -8,11 +9,11 @@ results = {}
 mot_tracker = Sort()
 
 # load models
-coco_model = YOLO('yolo11n.pt')
-license_plate_detector = YOLO('best.pt')
+coco_model = YOLO('models/yolo11n.pt')
+license_plate_detector = YOLO('models/best.pt')
 
 # load video
-cap = cv2.VideoCapture('sample.mp4')
+cap = cv2.VideoCapture("sample3.mp4")
 
 vehicles = [2, 3, 5, 7]
 
@@ -54,7 +55,7 @@ while ret:
                 _, license_plate_crop_thresh = cv2.threshold(license_plate_crop_gray, 64, 255, cv2.THRESH_BINARY_INV)
 
                 # cv2.imshow('license_plate_orig', license_plate_crop)
-                # cv2.imshow('license_plate_crop', license_plate_crop_thresh)
+                # cv2.imshow('license_plate_crop', license_plate_crop_gray)
                 # cv2.waitKey(0)
 
                 # read license plate number

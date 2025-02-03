@@ -1,9 +1,9 @@
 import ast
-
+import string
 import cv2
 import numpy as np
 import pandas as pd
-from PIL import ImageFont, ImageDraw, Image
+
 
 
 def draw_border(img, top_left, bottom_right, color=(0, 255, 0), thickness=0.1, line_length_x=200, line_length_y=200):
@@ -25,36 +25,135 @@ def draw_border(img, top_left, bottom_right, color=(0, 255, 0), thickness=0.1, l
     return img
 
 
-results = pd.read_csv('./test_interpolated.csv')
+results = pd.read_csv('test_interpolated.csv')
 
 
 # load video
-video_path = 'sample.mp4'
+video_path = 'sample3.mp4'
 cap = cv2.VideoCapture(video_path)
 
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Specify the codec
 fps = cap.get(cv2.CAP_PROP_FPS)
 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-out = cv2.VideoWriter('./out.mp4', fourcc, fps, (width, height))
+out = cv2.VideoWriter('./out3.mp4', fourcc, fps, (width, height))
+
+# license_plate = {}
+# for car_id in np.unique(results['car_id']):
+#     max_ = np.amax(results[results['car_id'] == car_id]['license_number_score'])
+#     license_plate[car_id] = {'license_crop': None,
+#                              'license_plate_number': results[(results['car_id'] == car_id) &
+#                                                              (results['license_number_score'] == max_)]['license_number'].iloc[0]}
+#     cap.set(cv2.CAP_PROP_POS_FRAMES, results[(results['car_id'] == car_id) &
+#                                              (results['license_number_score'] == max_)]['frame_nmr'].iloc[0])
+#     ret, frame = cap.read()
+
+#     x1, y1, x2, y2 = ast.literal_eval(results[(results['car_id'] == car_id) &
+#                                               (results['license_number_score'] == max_)]['license_plate_bbox'].iloc[0].replace('[ ', '[').replace('   ', ' ').replace('  ', ' ').replace(' ', ','))
+
+#     license_crop = frame[int(y1):int(y2), int(x1):int(x2), :]
+#     license_crop = cv2.resize(license_crop, (int((x2 - x1) * 40 / (y2 - y1)), 40))
+
+#     license_plate[car_id]['license_crop'] = license_crop
+
 
 license_plate = {}
+
 for car_id in np.unique(results['car_id']):
-    max_ = np.amax(results[results['car_id'] == car_id]['license_number_score'])
-    license_plate[car_id] = {'license_crop': None,
-                             'license_plate_number': results[(results['car_id'] == car_id) &
-                                                             (results['license_number_score'] == max_)]['license_number'].iloc[0]}
-    cap.set(cv2.CAP_PROP_POS_FRAMES, results[(results['car_id'] == car_id) &
-                                             (results['license_number_score'] == max_)]['frame_nmr'].iloc[0])
-    ret, frame = cap.read()
+    car_results = results[results['car_id'] == car_id]
+    car_results = car_results.dropna(subset=['license_number'])
 
-    x1, y1, x2, y2 = ast.literal_eval(results[(results['car_id'] == car_id) &
-                                              (results['license_number_score'] == max_)]['license_plate_bbox'].iloc[0].replace('[ ', '[').replace('   ', ' ').replace('  ', ' ').replace(' ', ','))
+    # Convert 'license_number' to string
+    car_results['license_number'] = car_results['license_number'].astype(str)
+    # Filter variable-length (5 to 7 characters) and 4-character license numbers
+    var_length_results = car_results[car_results['license_number'].apply(lambda x: 5 <= len(x) <= 7)]
+    four_char_results = car_results[car_results['license_number'].apply(lambda x: len(x) == 4)]
+    
+    # Get the highest confidence entries for each type (if they exist)
+    max_var_length = var_length_results.loc[var_length_results['license_number_score'].idxmax()] if not var_length_results.empty else None
+    max_four_char = four_char_results.loc[four_char_results['license_number_score'].idxmax()] if not four_char_results.empty else None
+    
+    # Concatenate the two license numbers with a space in between (if both exist)
+    concatenated_license = ""
+    if max_var_length is not None and max_four_char is not None:
+        concatenated_license = f"{max_var_length['license_number']} {max_four_char['license_number']}"
+    elif max_var_length is not None:
+        concatenated_license = max_var_length['license_number']
+    elif max_four_char is not None:
+        concatenated_license = max_four_char['license_number']
+    
+    # Store the concatenated license number and corresponding crop
+    if concatenated_license:
+        license_plate[car_id] = {'license_crop': None, 'license_plate_number': concatenated_license}
+        
+        # Use the frame with the highest confidence score (either from variable-length or 4-char)
+        best_frame = max_var_length if (max_var_length is not None and (max_four_char is None or max_var_length['license_number_score'] > max_four_char['license_number_score'])) else max_four_char
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, best_frame['frame_nmr'])
+        ret, frame = cap.read()
 
-    license_crop = frame[int(y1):int(y2), int(x1):int(x2), :]
-    license_crop = cv2.resize(license_crop, (int((x2 - x1) * 40 / (y2 - y1)), 40))
+        x1, y1, x2, y2 = ast.literal_eval(best_frame['license_plate_bbox'].replace('[ ', '[').replace('   ', ' ').replace('  ', ' ').replace(' ', ','))
+        license_crop = frame[int(y1):int(y2), int(x1):int(x2), :]
+        license_crop = cv2.resize(license_crop, (int((x2 - x1) * 40 / (y2 - y1)), 40))
 
-    license_plate[car_id]['license_crop'] = license_crop
+        license_plate[car_id]['license_crop'] = license_crop
+
+
+# license_plate = {}
+
+# for car_id in np.unique(results['car_id']):
+#     car_results = results[results['car_id'] == car_id]
+#     car_results = car_results.dropna(subset=['license_number'])
+
+#     # Convert 'license_number' to string
+#     car_results['license_number'] = car_results['license_number'].astype(str)
+
+#     four_char_results = car_results[
+#         car_results['license_number'].apply(
+#             lambda x: len(x) == 4 and x.isdigit()  # Ensures all characters are digits
+#         )
+#     ]
+
+#     var_length_results = car_results[
+#         car_results['license_number'].apply(
+#             lambda x: (
+#                 6 <= len(x) <= 7 and  # Length must be 6 or 7
+#                 x[0] in string.ascii_letters and  # 1st character must be a letter
+#                 x[1] in string.ascii_letters and  # 2nd character must be a letter
+#                 x[2].isdigit() and  # 3rd character must be a digit
+#                 all(c in string.ascii_letters for c in x[3:])  # 4th onward must be letters
+#             )
+#         )
+#     ]
+
+#     # Get the highest confidence entries for each type (if they exist)
+#     max_var_length = var_length_results.loc[var_length_results['license_number_score'].idxmax()] if not var_length_results.empty else None
+#     max_four_char = four_char_results.loc[four_char_results['license_number_score'].idxmax()] if not four_char_results.empty else None
+
+#     # Concatenate the two license numbers with a space in between (if both exist)
+#     concatenated_license = ""
+#     if max_var_length is not None and max_four_char is not None:
+#         concatenated_license = f"{max_var_length['license_number']} {max_four_char['license_number']}"
+#     elif max_var_length is not None:
+#         concatenated_license = max_var_length['license_number']
+#     elif max_four_char is not None:
+#         concatenated_license = max_four_char['license_number']
+
+#     # Store the concatenated license number and corresponding crop
+#     if concatenated_license:
+#         license_plate[car_id] = {'license_crop': None, 'license_plate_number': concatenated_license}
+
+#         # Use the frame with the highest confidence score (either from variable-length or 4-char)
+#         best_frame = max_var_length if (max_var_length is not None and (max_four_char is None or max_var_length['license_number_score'] > max_four_char['license_number_score'])) else max_four_char
+
+#         cap.set(cv2.CAP_PROP_POS_FRAMES, best_frame['frame_nmr'])
+#         ret, frame = cap.read()
+
+#         x1, y1, x2, y2 = ast.literal_eval(best_frame['license_plate_bbox'].replace('[ ', '[').replace('   ', ' ').replace('  ', ' ').replace(' ', ','))
+#         license_crop = frame[int(y1):int(y2), int(x1):int(x2), :]
+#         license_crop = cv2.resize(license_crop, (int((x2 - x1) * 40 / (y2 - y1)), 40))
+
+#         license_plate[car_id]['license_crop'] = license_crop
 
 frame_nmr = -1
 
@@ -87,7 +186,7 @@ while ret:
                       int((car_x2 + car_x1 - W) / 2):int((car_x2 + car_x1 + W) / 2), :] = license_crop
 
                 frame[int(car_y1) - H - 40:int(car_y1) - H - 10,
-                      int((car_x2 + car_x1 - W) / 2):int((car_x2 + car_x1 + W) / 2), :] = (255, 255, 255)
+                      int((car_x2 + car_x1 - W*2.5) / 2):int((car_x2 + car_x1 + W*2.5) / 2), :] = (255, 255, 255)
 
                 (text_width, text_height), _ = cv2.getTextSize(
                     license_plate[df_.iloc[row_indx]['car_id']]['license_plate_number'],
@@ -96,7 +195,7 @@ while ret:
                     2)
 
                 cv2.putText(frame,
-                            license_plate[df_.iloc[row_indx]['car_id']]['license_plate_number'],
+                            license_plate[int(df_.iloc[row_indx]['car_id'])]['license_plate_number'],
                             (int((car_x2 + car_x1 - text_width) / 2), int(car_y1 - H - 25 + (text_height / 2))),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.7,
